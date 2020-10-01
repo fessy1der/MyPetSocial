@@ -5,12 +5,14 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MyPetSocial.Models;
+using MyPetSocial.Services;
 
 namespace MyPetSocial.Controllers
 {
@@ -18,13 +20,17 @@ namespace MyPetSocial.Controllers
     {
         private readonly UserManager<User> _userManager;
         private readonly ApplicationSettings _appSettings;
+        private readonly IIdentityService _identity;
 
-        public IdentityController(UserManager<User> userManager,IOptions<ApplicationSettings> appSettings)
+        public IdentityController(UserManager<User> userManager, IOptions<ApplicationSettings> appSettings, IIdentityService identity)
         {
             _userManager = userManager;
             _appSettings = appSettings.Value;
+            _identity = identity;
         }
 
+        [HttpPost]
+        [AllowAnonymous]
         [Route(nameof(Register))]
         public async Task<IActionResult> Register(RegisterUserModel model)
         {
@@ -32,10 +38,10 @@ namespace MyPetSocial.Controllers
             {
                 Email = model.Email,
                 UserName = model.UserName,
-                
+
             };
 
-            var result = await _userManager.CreateAsync(user,model.Password);
+            var result = await _userManager.CreateAsync(user, model.Password);
 
             if (result.Succeeded)
             {
@@ -45,8 +51,10 @@ namespace MyPetSocial.Controllers
             return BadRequest(result.Errors);
         }
 
+        [HttpPost]
+        [AllowAnonymous]
         [Route(nameof(Login))]
-        public async Task<ActionResult<string>> Login(LoginModel model)
+        public async Task<ActionResult<LoginResponseModel>> Login(LoginModel model)
         {
             var user = await _userManager.FindByNameAsync(model.UserName);
             if (user == null)
@@ -61,21 +69,17 @@ namespace MyPetSocial.Controllers
                 return Unauthorized();
             }
 
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_appSettings.Secret);
-            var tokenDescriptor = new SecurityTokenDescriptor
-            {
-                Subject = new ClaimsIdentity(new Claim[]
-                {
-                    new Claim(ClaimTypes.Name, user.Id.ToString())
-                }),
-                Expires = DateTime.UtcNow.AddDays(7),
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-            };
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            var encryptedToken = tokenHandler.WriteToken(token);
+            var token = _identity.GenerateJwtToken(
+                user.Id,
+                user.UserName,
+                _appSettings.Secret);
 
-            return encryptedToken;
+            return new LoginResponseModel
+            {
+                Token = token
+            };
+
         }
+
     }
 }

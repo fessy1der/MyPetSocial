@@ -21,7 +21,7 @@ export class LoginComponent implements OnInit {
 
   login(){
     this.authService.login(this.loginForm.value).subscribe(data =>{
-      console.log(data);
+      this.authService.saveToken(data);
     })
   }
 
